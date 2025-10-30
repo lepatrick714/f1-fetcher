@@ -1,9 +1,11 @@
 // f1-fetcher.ts
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+// os import removed - not used
+import { ApiClient } from './src/api-client';
+import { FileCache } from './src/cache';
 
-interface TelemetryPoint {
+interface locationPoint {
   date: string;
   driver_number: number;
   meeting_key: number;
@@ -32,113 +34,86 @@ interface SessionInfo {
 
 interface SavedRaceData {
   sessionInfo: SessionInfo;
-  telemetryData: { [driverNumber: string]: TelemetryPoint[] };
+  locationData: { [driverNumber: string]: locationPoint[] };
   savedAt: string;
 }
 
-const dataDir = path.join(process.cwd(), 'f1_data');
-const cacheDir = path.join(process.cwd(), '.f1_cache');
-
 class F1DataFetcher {
-  private baseUrl = 'https://api.openf1.org/v1';
-  private maxRetries = 10;
-  private baseDelay = 1000;
+  // reuse existing dirs (project-local)
+  private dataDir = path.join(process.cwd(), 'f1_data');
+  private cacheDir = path.join(process.cwd(), '.f1_cache');
+
+  // expose dirs for external use (CLI, tests)
+  getDataDir(): string {
+    return this.dataDir;
+  }
+
+  getCacheDir(): string {
+    return this.cacheDir;
+  }
+
+  // new modules
+  private api = new ApiClient();
+  private dataCache = new FileCache(this.dataDir);
+  private metaCache = new FileCache(this.cacheDir);
+
   private delayBetweenDrivers = 1000;
 
   constructor() {
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    // ensure dirs (keep using sync for CLI friendliness)
+    if (!fs.existsSync(this.dataDir)) {
+      fs.mkdirSync(this.dataDir, { recursive: true });
     }
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
+    if (!fs.existsSync(this.cacheDir)) {
+      fs.mkdirSync(this.cacheDir, { recursive: true });
     }
-    console.log("dataDir: ", dataDir);
-    console.log("cacheDir: ", cacheDir);
+    console.log("dataDir: ", this.dataDir);
+    console.log("cacheDir: ", this.cacheDir);
   }
 
   private async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private async fetchWithRetry(url: string, retryCount = 0): Promise<any> {
-    try {
-      console.log(`  Fetching: ${url}`);
-      const response = await fetch(url);
-
-      if (response.status === 429) {
-        if (retryCount >= this.maxRetries) {
-          throw new Error(`Max retries (${this.maxRetries}) exceeded for rate limit`);
-        }
-        const delay = this.baseDelay * Math.pow(2, retryCount);
-        console.log(`  ⚠️  Rate limit hit (429). Retrying in ${delay / 1000}s... (Attempt ${retryCount + 1}/${this.maxRetries})`);
-        await this.sleep(delay);
-        return this.fetchWithRetry(url, retryCount + 1);
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (data.detail && data.detail.includes('too much data')) {
-        throw new Error('API returned too much data error');
-      }
-
-      return data;
-    } catch (error) {
-      if (retryCount >= this.maxRetries) {
-        throw error;
-      }
-      const delay = this.baseDelay * Math.pow(2, retryCount);
-      console.log(`  ❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}. Retrying in ${delay / 1000}s... (Attempt ${retryCount + 1}/${this.maxRetries})`);
-      await this.sleep(delay);
-      return this.fetchWithRetry(url, retryCount + 1);
-    }
-  }
-
   async listRaces(year: number, useCache: boolean = true): Promise<SessionInfo[]> {
-    const cacheFile = path.join(cacheDir, `races_${year}.json`);
+    const key = `races_${year}`;
 
-    // Try to load from cache
-    if (useCache && fs.existsSync(cacheFile)) {
-      console.log(`\n🏁 Loading races for ${year} from cache...`);
-      const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
-      console.log(`✅ Found ${cached.length} races (cached)\n`);
-      return cached;
+    if (useCache) {
+      const cached = await this.metaCache.read<SessionInfo[]>(key);
+      if (cached && cached.length) {
+        console.log(`\n🏁 Loading races for ${year} from cache...`);
+        console.log(`✅ Found ${cached.length} races (cached)\n`);
+        return cached;
+      }
     }
 
     console.log(`\n🏁 Fetching races for ${year} from API...`);
-    const sessions = await this.fetchWithRetry(
-      `${this.baseUrl}/sessions?session_type=Race&year=${year}`
-    );
+    const sessions = await this.api.fetchSessions(year);
 
     // Save to cache
-    fs.writeFileSync(cacheFile, JSON.stringify(sessions, null, 2));
+    await this.metaCache.write(key, sessions);
     console.log(`✅ Found ${sessions.length} races (saved to cache)\n`);
 
     return sessions;
   }
 
   async getDriversForSession(sessionKey: number, useCache: boolean = true): Promise<number[]> {
-    const cacheFile = path.join(cacheDir, `drivers_${sessionKey}.json`);
+    const key = `drivers_${sessionKey}`;
 
-    // Try to load from cache
-    if (useCache && fs.existsSync(cacheFile)) {
-      console.log('👥 Loading drivers from cache...');
-      const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
-      console.log(`✅ Found ${cached.length} drivers (cached): ${cached.join(', ')}`);
-      return cached;
+    if (useCache) {
+      const cached = await this.metaCache.read<number[]>(key);
+      if (cached && cached.length) {
+        console.log('👥 Loading drivers from cache...');
+        console.log(`✅ Found ${cached.length} drivers (cached): ${cached.join(', ')}`);
+        return cached;
+      }
     }
 
     console.log('👥 Fetching available drivers from API...');
-    const drivers = await this.fetchWithRetry(
-      `${this.baseUrl}/drivers?session_key=${sessionKey}`
-    );
+    const drivers = await this.api.fetchDrivers(sessionKey);
     const driverNumbers = drivers.map((d: any) => d.driver_number).sort((a: number, b: number) => a - b);
 
-    // Save to cache
-    fs.writeFileSync(cacheFile, JSON.stringify(driverNumbers, null, 2));
+    await this.metaCache.write(key, driverNumbers);
     console.log(`✅ Found ${driverNumbers.length} drivers (saved to cache): ${driverNumbers.join(', ')}`);
 
     return driverNumbers;
@@ -149,9 +124,10 @@ class F1DataFetcher {
 
     // Get session info
     console.log('📋 Getting session information...');
-    const sessions = await this.fetchWithRetry(
-      `${this.baseUrl}/sessions?session_key=${sessionKey}`
-    );
+    const sessions = await this.api.fetchSession(sessionKey);
+    if (!sessions || sessions.length === 0) {
+      throw new Error(`No session found for session_key=${sessionKey}`);
+    }
     const sessionInfo: SessionInfo = sessions[0];
     console.log(`✅ Session: ${sessionInfo.location} - ${sessionInfo.session_name}`);
 
@@ -160,36 +136,71 @@ class F1DataFetcher {
       driverNumbers = await this.getDriversForSession(sessionKey, useCache);
     }
 
-    // Fetch telemetry for each driver
-    console.log(`\n📡 Fetching telemetry data for ${driverNumbers.length} drivers...`);
-    const telemetryData: { [driverNumber: string]: TelemetryPoint[] } = {};
+    // Fetch location for each driver
+    console.log(`\n📡 Fetching location data for ${driverNumbers.length} drivers...`);
+    const locationData: { [driverNumber: string]: locationPoint[] } = {};
     let loadedCount = 0;
     let failedCount = 0;
 
+    // Try fetching session-level location first and split by driver_number
+    console.log('\n📡 Probing session-level location (single request)...');
+    try {
+      const sessionlocation = await this.api.fetchLocationForSession(sessionKey);
+      if (Array.isArray(sessionlocation) && sessionlocation.length > 0) {
+        console.log(`  ✅ Session location returned ${sessionlocation.length} points — splitting by driver`);
+        // group by driver_number
+        const byDriver: { [k: number]: locationPoint[] } = {};
+        for (const p of sessionlocation) {
+          const dn = p.driver_number;
+          if (!byDriver[dn]) byDriver[dn] = [];
+          byDriver[dn].push(p);
+        }
+        // if caller specified a driver subset, pick those; otherwise use all found drivers
+        const driversToProcess = (driverNumbers && driverNumbers.length) ? driverNumbers : Object.keys(byDriver).map(n => parseInt(n, 10));
+        for (const dn of driversToProcess) {
+          const data = byDriver[dn] || [];
+          if (data.length > 0) {
+            locationData[dn] = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            loadedCount++;
+            console.log(`  ✅ Driver #${dn}: ${locationData[dn].length} points`);
+          } else {
+            failedCount++;
+            console.log(`  ⚠️  Driver #${dn}: No data`);
+          }
+        }
+        // skip per-driver fetch loop below
+      } else {
+        console.log('  ⚠️  Session-level location empty — falling back to per-driver requests');
+        // fall through to per-driver loop as before
+      }
+    } catch (err) {
+      console.log('  ⚠️  Session-level probe failed, falling back to per-driver:', err instanceof Error ? err.message : err);
+      // fall through to per-driver loop
+    }
+
+    // ...existing per-driver loop remains (will run only if session-level yielded no data) ...
     for (let i = 0; i < driverNumbers.length; i++) {
       const driverNumber = driverNumbers[i];
       console.log(`\n[${i + 1}/${driverNumbers.length}] Driver #${driverNumber}`);
 
       try {
-        // Add delay between requests (except first)
         if (i > 0) {
           console.log(`  ⏱️  Waiting ${this.delayBetweenDrivers / 1000}s to avoid rate limits...`);
           await this.sleep(this.delayBetweenDrivers);
         }
 
-        const data = await this.fetchWithRetry(
-          `${this.baseUrl}/location?session_key=${sessionKey}&driver_number=${driverNumber}`
-        );
+        const data = await this.api.fetchLocation(sessionKey, driverNumber);
+        console.log('DEBUG raw location length:', Array.isArray(data) ? data.length : typeof data);
+        locationData[driverNumber] = data; // temporarily keep raw to inspect
 
         if (data && data.length > 0) {
-          // Sample every 5th point to reduce data size
           const sampledData = data
             .filter((_: any, idx: number) => idx % 5 === 0)
-            .sort((a: TelemetryPoint, b: TelemetryPoint) =>
+            .sort((a: locationPoint, b: locationPoint) =>
               new Date(a.date).getTime() - new Date(b.date).getTime()
             );
 
-          telemetryData[driverNumber] = sampledData;
+          locationData[driverNumber] = sampledData;
           loadedCount++;
           console.log(`  ✅ Loaded ${sampledData.length} points (sampled from ${data.length})`);
         } else {
@@ -206,7 +217,7 @@ class F1DataFetcher {
 
     const savedData: SavedRaceData = {
       sessionInfo,
-      telemetryData,
+      locationData,
       savedAt: new Date().toISOString()
     };
 
@@ -214,44 +225,43 @@ class F1DataFetcher {
   }
 
   saveToFile(data: SavedRaceData): string {
-    const filename = `f1_race_${data.sessionInfo.location.replace(/\s+/g, '_')}_${data.sessionInfo.session_key}.json`;
-    const filepath = path.join(dataDir, filename);
+    const key = `f1_race_${data.sessionInfo.location.replace(/\s+/g, '_')}_${data.sessionInfo.session_key}`;
+    // write is async but keep sync-style return by using sync write for compatibility
+    const filePath = path.join(this.dataDir, `${key}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    console.log(`\n💾 Saved to: ${filePath}`);
 
-    fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
-    console.log(`\n💾 Saved to: ${filepath}`);
-
-    const sizeMB = (fs.statSync(filepath).size / (1024 * 1024)).toFixed(2);
+    const sizeMB = (fs.statSync(filePath).size / (1024 * 1024)).toFixed(2);
     console.log(`📦 File size: ${sizeMB} MB`);
 
-    return filepath;
+    return filePath;
   }
 
   loadFromFile(filepath: string): SavedRaceData {
     console.log(`\n📁 Loading from: ${filepath}`);
     const data = JSON.parse(fs.readFileSync(filepath, 'utf-8'));
-    console.log(`✅ Loaded ${Object.keys(data.telemetryData).length} drivers`);
+    console.log(`✅ Loaded ${Object.keys(data.locationData).length} drivers`);
     return data;
   }
 
   listCachedFiles(): string[] {
-    // cached "race files" are saved in the cacheDir (./.cache)
-    if (!fs.existsSync(cacheDir)) {
+    // race files live in dataDir
+    if (!fs.existsSync(this.dataDir)) {
       return [];
     }
-    const files = fs.readdirSync(cacheDir).filter(f => f.endsWith('.json'));
+    const files = fs.readdirSync(this.dataDir).filter(f => f.endsWith('.json'));
     if (files.length === 0) {
       console.log('\n📭 No cached data');
       return [];
     }
-
     return files;
   }
 
   clearCache(): void {
-    if (fs.existsSync(cacheDir)) {
-      const files = fs.readdirSync(cacheDir);
+    if (fs.existsSync(this.cacheDir)) {
+      const files = fs.readdirSync(this.cacheDir);
       files.forEach(file => {
-        fs.unlinkSync(path.join(cacheDir, file));
+        fs.unlinkSync(path.join(this.cacheDir, file));
       });
       console.log(`\n🗑️  Cleared ${files.length} cache files`);
     } else {
@@ -260,12 +270,12 @@ class F1DataFetcher {
   }
 
   showCacheInfo(): void {
-    if (!fs.existsSync(cacheDir)) {
+    if (!fs.existsSync(this.cacheDir)) {
       console.log('\n📭 No cache directory found');
       return;
     }
 
-    const files = fs.readdirSync(cacheDir).filter(f => f.endsWith('.json'));
+    const files = fs.readdirSync(this.cacheDir).filter(f => f.endsWith('.json'));
     if (files.length === 0) {
       console.log('\n📭 No cached data');
       return;
@@ -273,7 +283,7 @@ class F1DataFetcher {
 
     console.log(`\n💾 Cache Info (${files.length} files):\n`);
     files.forEach((file, idx) => {
-      const filepath = path.join(cacheDir, file);
+      const filepath = path.join(this.cacheDir, file);
       const stats = fs.statSync(filepath);
       const sizeKB = (stats.size / 1024).toFixed(2);
       const modified = stats.mtime.toLocaleDateString();
@@ -293,21 +303,21 @@ async function main() {
 🏎️  F1 Data Fetcher CLI
 
 Usage:
-  node f1-fetcher.js list <year> [--no-cache]       # List available races
-  node f1-fetcher.js fetch <session_key> [drivers] [--no-cache]  # Fetch race data
-  node f1-fetcher.js cached                         # List cached race files
-  node f1-fetcher.js cache-info                     # Show cache information
-  node f1-fetcher.js clear-cache                    # Clear all cache
+  npx tsx f1-fetcher.ts list <year> [--no-cache]       # List available races
+  npx tsx f1-fetcher.ts fetch <session_key> [drivers] [--no-cache]  # Fetch race data
+  npx tsx f1-fetcher.ts cached                         # List cached race files
+  npx tsx f1-fetcher.ts cache-info                     # Show cache information
+  npx tsx f1-fetcher.ts clear-cache                    # Clear all cache
 
 Examples:
-  node f1-fetcher.js list 2023
-  node f1-fetcher.js list 2023 --no-cache           # Force fresh API call
-  node f1-fetcher.js fetch 9161                     # Fetch all drivers
-  node f1-fetcher.js fetch 9161 1,44,81             # Fetch specific drivers
-  node f1-fetcher.js fetch 9161 --no-cache          # Bypass cache
-  node f1-fetcher.js cached
-  node f1-fetcher.js cache-info
-  node f1-fetcher.js clear-cache
+  npx tsx f1-fetcher.ts list 2023
+  npx tsx f1-fetcher.ts list 2023 --no-cache           # Force fresh API call
+  npx tsx f1-fetcher.ts fetch 9161                     # Fetch all drivers
+  npx tsx f1-fetcher.ts fetch 9161 1,44,81             # Fetch specific drivers
+  npx tsx f1-fetcher.ts fetch 9161 --no-cache          # Bypass cache
+  npx tsx f1-fetcher.ts cached
+  npx tsx f1-fetcher.ts cache-info
+  npx tsx f1-fetcher.ts clear-cache
 
 Cache:
   - Race lists cached in .cache/races_<year>.json
@@ -350,8 +360,13 @@ Cache:
       }
 
       const data = await fetcher.fetchRaceData(sessionKey, driverNumbers, useCache);
-      fetcher.saveToFile(data);
-      console.log('\n✅ Done!');
+      const loadedDrivers = Object.keys(data.locationData).length;
+      if (loadedDrivers === 0) {
+        console.warn('\n⚠️  No location loaded — not saving empty file');
+      } else {
+        fetcher.saveToFile(data);
+        console.log('\n✅ Done!');
+      }
     } else if (command === 'cached') {
       const files = fetcher.listCachedFiles();
       if (files.length === 0) {
@@ -359,7 +374,7 @@ Cache:
       } else {
         console.log(`\n📚 Cached race files (${files.length}):\n`);
         files.forEach((file, idx) => {
-          const filepath = path.join(cacheDir, file);
+          const filepath = path.join(fetcher.getDataDir(), file);
           const sizeMB = (fs.statSync(filepath).size / (1024 * 1024)).toFixed(2);
           console.log(`${idx + 1}. ${file} (${sizeMB} MB)`);
         });

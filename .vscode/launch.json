@@ -2,6 +2,15 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Attach by Process ID",
+      "processId": "${command:PickProcess}",
+      "request": "attach",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "type": "node"
+    },
+    {
       "name": "Run f1-fetcher.ts (tsx)",
       "type": "pwa-node",
       "request": "launch",
@@ -30,6 +39,31 @@
       "args": ["cached"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
+    },
+    {
+      "name": "Run f1-fetcher.ts via WSL (prompt args)",
+      "type": "pwa-node",
+      "request": "launch",
+      "runtimeExecutable": "wsl",
+      "runtimeArgs": [
+        "bash",
+        "-lc",
+        "npx tsx /home/lepatrick714/F1_Prototypes/f1-fetcher.ts ${input:cliArgs}"
+      ],
+      "cwd": "/home/lepatrick714/F1_Prototypes",
+      "console": "integratedTerminal",
+      "outputCapture": "std",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "cliArgs",
+      "type": "promptString",
+      "description": "Arguments to pass to f1-fetcher.ts (e.g. 'cached' or 'fetch 9161 --no-cache')",
+      "default": "cached"
     }
   ]
 }

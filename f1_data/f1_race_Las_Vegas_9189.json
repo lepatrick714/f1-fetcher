@@ -1,0 +1,41 @@
+{
+  "sessionInfo": {
+    "meeting_key": 1225,
+    "session_key": 9189,
+    "location": "Las Vegas",
+    "date_start": "2023-11-19T06:00:00+00:00",
+    "date_end": "2023-11-19T08:00:00+00:00",
+    "session_type": "Race",
+    "session_name": "Race",
+    "country_key": 19,
+    "country_code": "USA",
+    "country_name": "United States",
+    "circuit_key": 152,
+    "circuit_short_name": "Las Vegas",
+    "gmt_offset": "-08:00:00",
+    "year": 2023
+  },
+  "telemetryData": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "10": [],
+    "11": [],
+    "14": [],
+    "16": [],
+    "18": [],
+    "20": [],
+    "22": [],
+    "23": [],
+    "24": [],
+    "27": [],
+    "31": [],
+    "44": [],
+    "55": [],
+    "63": [],
+    "77": [],
+    "81": []
+  },
+  "savedAt": "2025-10-30T20:18:31.027Z"
+}
