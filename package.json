@@ -1,0 +1,16 @@
+{
+    "name": "f1-data-fetcher",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "build": "npx tsc f1-fetcher.ts",
+        "start": "tsx f1-fetcher.ts"
+    },
+    "dependencies": {
+        "@types/node": "^20.0.0",
+        "typescript": "^5.9.3"
+    },
+    "devDependencies": {
+        "tsx": "^4.20.6"
+    }
+}

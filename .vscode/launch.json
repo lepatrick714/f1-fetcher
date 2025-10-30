@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run f1-fetcher.ts (tsx)",
+      "type": "pwa-node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx"
+      ],
+      "args": [
+        "${workspaceFolder}/f1-fetcher.ts",
+        "--",          // forward marker; optional but keeps args consistent
+        "cached"       // example CLI command to trigger listCachedFiles
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "outputCapture": "std",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      "name": "Run compiled JS (node)",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/f1-fetcher.js",
+      "preLaunchTask": "tsc: build - tsconfig.json",
+      "args": ["cached"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}
