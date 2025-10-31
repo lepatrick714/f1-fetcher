@@ -30,7 +30,7 @@ npx tsx f1-fetcher.ts cached
 npx tsx f1-fetcher.ts cache-info
 
 # clear all cache
-npx tsx f1-fetcher.ts clear-cache
+    npx tsx f1-fetcher.ts clear-cache
 
 # try another year
 npx tsx f1-fetcher.ts list 2024

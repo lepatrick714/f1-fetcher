@@ -4,6 +4,7 @@ import * as path from 'path';
 // os import removed - not used
 import { ApiClient } from './src/api-client';
 import { FileCache } from './src/cache';
+import type { DriverInfo, CarDataSample } from './src/types';
 
 interface locationPoint {
   date: string;
@@ -97,6 +98,68 @@ class F1DataFetcher {
     return sessions;
   }
 
+  async getSessionInfo(sessionKey: number): Promise<SessionInfo> {
+    const sessions = await this.api.fetchSession(sessionKey);
+    if (!sessions || sessions.length === 0) {
+      throw new Error(`No session found for session_key=${sessionKey}`);
+    }
+    return sessions[0] as SessionInfo;
+  }
+
+  // Fetch detailed driver info (headshot_url, team, etc.) for a session
+  async fetchDriverDetailsForSession(sessionKey: number, driverNumbers?: number[], useCache: boolean = true): Promise<DriverInfo[]> {
+    const cacheKey = `driver_details_${sessionKey}`;
+
+    if (useCache) {
+      const cached = await this.metaCache.read<DriverInfo[]>(cacheKey);
+      if (cached && cached.length) {
+        console.log(`👤 Loading driver details from cache (${cached.length})`);
+        return driverNumbers && driverNumbers.length
+          ? cached.filter(d => driverNumbers.includes(d.driver_number))
+          : cached;
+      }
+    }
+
+    console.log('👤 Fetching driver details from API...');
+    // Fetch all for the session in one call (filter locally if needed)
+    const details = await this.api.fetchDriverDetails(sessionKey);
+    const sorted = details.sort((a, b) => a.driver_number - b.driver_number);
+
+    await this.metaCache.write(cacheKey, sorted);
+
+    return driverNumbers && driverNumbers.length
+      ? sorted.filter(d => driverNumbers.includes(d.driver_number))
+      : sorted;
+  }
+
+  // Fetch car_data for each driver; always saved separately from location
+  async fetchCarDataForSession(sessionKey: number, driverNumbers?: number[], useCache: boolean = true): Promise<Record<string, CarDataSample[]>> {
+    // derive driver list if not provided
+    if (!driverNumbers || driverNumbers.length === 0) {
+      driverNumbers = await this.getDriversForSession(sessionKey, useCache);
+    }
+
+    const perDriver: Record<string, CarDataSample[]> = {};
+    console.log(`\n⚙️  Fetching car_data for ${driverNumbers.length} drivers...`);
+    for (let i = 0; i < driverNumbers.length; i++) {
+      const driverNumber = driverNumbers[i];
+      console.log(`\n[${i + 1}/${driverNumbers.length}] Driver #${driverNumber} car_data`);
+      try {
+        if (i > 0) {
+          console.log(`  ⏱️  Waiting ${this.delayBetweenDrivers / 1000}s to avoid rate limits...`);
+          await this.sleep(this.delayBetweenDrivers);
+        }
+        const rows = await this.api.fetchCarData(sessionKey, driverNumber);
+        perDriver[String(driverNumber)] = Array.isArray(rows) ? rows : [];
+        console.log(`  ✅ Loaded ${perDriver[String(driverNumber)].length} car_data rows`);
+      } catch (err) {
+        console.log(`  ❌ Failed car_data for #${driverNumber}:`, err instanceof Error ? err.message : String(err));
+        perDriver[String(driverNumber)] = [];
+      }
+    }
+    return perDriver;
+  }
+
   async getDriversForSession(sessionKey: number, useCache: boolean = true): Promise<number[]> {
     const key = `drivers_${sessionKey}`;
 
@@ -111,6 +174,8 @@ class F1DataFetcher {
 
     console.log('👥 Fetching available drivers from API...');
     const drivers = await this.api.fetchDrivers(sessionKey);
+
+
     const driverNumbers = drivers.map((d: any) => d.driver_number).sort((a: number, b: number) => a - b);
 
     await this.metaCache.write(key, driverNumbers);
@@ -224,6 +289,40 @@ class F1DataFetcher {
     return savedData;
   }
 
+  saveDriversToFile(sessionInfo: SessionInfo, drivers: DriverInfo[]): string {
+    const key = `f1_drivers_${sessionInfo.session_key}`;
+    const filePath = path.join(this.dataDir, `${key}.json`);
+    const payload = {
+      sessionInfo,
+      drivers,
+      savedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+    console.log(`\n💾 Saved drivers to: ${filePath}`);
+    const sizeKB = (fs.statSync(filePath).size / 1024).toFixed(2);
+    console.log(`📦 File size: ${sizeKB} KB`);
+    return filePath;
+  }
+
+  saveMergedToFile(loc: SavedRaceData, drivers: DriverInfo[]): string {
+    const key = `f1_race_${loc.sessionInfo.location.replace(/\s+/g, '_')}_${loc.sessionInfo.session_key}_with_drivers`;
+    const filePath = path.join(this.dataDir, `${key}.json`);
+    const driversByNumber: Record<string, DriverInfo> = {};
+    for (const d of drivers) driversByNumber[String(d.driver_number)] = d;
+
+    const merged = {
+      sessionInfo: loc.sessionInfo,
+      locationData: loc.locationData,
+      drivers: driversByNumber,
+      savedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(filePath, JSON.stringify(merged, null, 2));
+    console.log(`\n💾 Saved merged data to: ${filePath}`);
+    const sizeMB = (fs.statSync(filePath).size / (1024 * 1024)).toFixed(2);
+    console.log(`📦 File size: ${sizeMB} MB`);
+    return filePath;
+  }
+
   saveToFile(data: SavedRaceData): string {
     const key = `f1_race_${data.sessionInfo.location.replace(/\s+/g, '_')}_${data.sessionInfo.session_key}`;
     // write is async but keep sync-style return by using sync write for compatibility
@@ -234,6 +333,21 @@ class F1DataFetcher {
     const sizeMB = (fs.statSync(filePath).size / (1024 * 1024)).toFixed(2);
     console.log(`📦 File size: ${sizeMB} MB`);
 
+    return filePath;
+  }
+
+  saveCarDataToFile(sessionInfo: SessionInfo, carData: Record<string, CarDataSample[]>): string {
+    const key = `f1_cardata_${sessionInfo.session_key}`;
+    const filePath = path.join(this.dataDir, `${key}.json`);
+    const payload = {
+      sessionInfo,
+      carData,
+      savedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+    console.log(`\n💾 Saved car_data to: ${filePath}`);
+    const sizeMB = (fs.statSync(filePath).size / (1024 * 1024)).toFixed(2);
+    console.log(`📦 File size: ${sizeMB} MB`);
     return filePath;
   }
 
@@ -304,7 +418,8 @@ async function main() {
 
 Usage:
   npx tsx f1-fetcher.ts list <year> [--no-cache]       # List available races
-  npx tsx f1-fetcher.ts fetch <session_key> [drivers] [--no-cache]  # Fetch race data
+  npx tsx f1-fetcher.ts fetch <session_key> [drivers] [--no-cache] [--location] [--car-data]
+                                                   # Fetch location and/or car_data (always separate files)
   npx tsx f1-fetcher.ts cached                         # List cached race files
   npx tsx f1-fetcher.ts cache-info                     # Show cache information
   npx tsx f1-fetcher.ts clear-cache                    # Clear all cache
@@ -312,9 +427,9 @@ Usage:
 Examples:
   npx tsx f1-fetcher.ts list 2023
   npx tsx f1-fetcher.ts list 2023 --no-cache           # Force fresh API call
-  npx tsx f1-fetcher.ts fetch 9161                     # Fetch all drivers
-  npx tsx f1-fetcher.ts fetch 9161 1,44,81             # Fetch specific drivers
-  npx tsx f1-fetcher.ts fetch 9161 --no-cache          # Bypass cache
+  npx tsx f1-fetcher.ts fetch 9161 --location          # Fetch location only (default)
+  npx tsx f1-fetcher.ts fetch 9161 --car-data          # Fetch car_data only
+  npx tsx f1-fetcher.ts fetch 9161 1,44 --location --car-data    # Fetch both independently for specific drivers (two files)
   npx tsx f1-fetcher.ts cached
   npx tsx f1-fetcher.ts cache-info
   npx tsx f1-fetcher.ts clear-cache
@@ -359,14 +474,33 @@ Cache:
         console.log(`🎯 Fetching specific drivers: ${driverNumbers.join(', ')}`);
       }
 
-      const data = await fetcher.fetchRaceData(sessionKey, driverNumbers, useCache);
-      const loadedDrivers = Object.keys(data.locationData).length;
-      if (loadedDrivers === 0) {
-        console.warn('\n⚠️  No location loaded — not saving empty file');
-      } else {
-        fetcher.saveToFile(data);
-        console.log('\n✅ Done!');
+      // Flags to select which APIs to call (always saved separately)
+      const wantLocation = args.includes('--location') || (!args.includes('--car-data')); // default to location if neither specified
+      const wantCarDetails = args.includes('--car-data');
+
+      // Always resolve session info first (for consistent outputs)
+      const sessionInfo: SessionInfo = await fetcher.getSessionInfo(sessionKey);
+
+      let locationSaved: SavedRaceData | undefined;
+      let carDetails: Record<string, CarDataSample[]> | undefined;
+
+      if (wantLocation) {
+        const data = await fetcher.fetchRaceData(sessionKey, driverNumbers, useCache);
+        const loadedDrivers = Object.keys(data.locationData).length;
+        if (loadedDrivers === 0) {
+          console.warn('\n⚠️  No location loaded — not saving empty file');
+        } else {
+          fetcher.saveToFile(data);
+          locationSaved = data;
+        }
       }
+
+      if (wantCarDetails) {
+        const perDriver = await fetcher.fetchCarDataForSession(sessionKey, driverNumbers, useCache);
+        fetcher.saveCarDataToFile(sessionInfo, perDriver);
+        carDetails = perDriver;
+      }
+      console.log('\n✅ Done!');
     } else if (command === 'cached') {
       const files = fetcher.listCachedFiles();
       if (files.length === 0) {

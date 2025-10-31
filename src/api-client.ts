@@ -1,5 +1,5 @@
 import { withRetry } from './retry';
-import type { SessionInfo } from './types';
+import type { SessionInfo, DriverInfo, CarDataSample } from './types';
 
 export const API_CLIENT_SESSION_KEY_NAME = 'session_key';
 export const API_CLIENT_DRIVER_NUMBER_KEY_NAME = 'driver_number';
@@ -59,6 +59,14 @@ export class ApiClient {
     return this.fetchJson<{ driver_number: number }[]>(url);
   }
 
+  // Detailed driver info (headshot_url, team_colour, etc.)
+  async fetchDriverDetails(sessionKey: number, driverNumber?: number): Promise<DriverInfo[]> {
+    const parts: string[] = [ `${API_CLIENT_SESSION_KEY_NAME}=${sessionKey}` ];
+    if (driverNumber != null) parts.push(`${API_CLIENT_DRIVER_NUMBER_KEY_NAME}=${driverNumber}`);
+    const url = `${this.baseUrl}/drivers?${parts.join('&')}`;
+    return this.fetchJson<DriverInfo[]>(url);
+  }
+
   async fetchLocation(sessionKey: number, driverNumber?: number) {
     const url = driverNumber
       ? `${this.baseUrl}/location?${API_CLIENT_SESSION_KEY_NAME}=${sessionKey}&${API_CLIENT_DRIVER_NUMBER_KEY_NAME}=${driverNumber}`
@@ -84,5 +92,16 @@ export class ApiClient {
     const qs = parts.join('&');
     const url = `${this.baseUrl}/location?${qs}`;
     return this.fetchJson<any>(url);
+  }
+
+  // Car data (3.7Hz) — same param shape as fetchLocationWindow
+  async fetchCarData(sessionKey: number, driverNumber: number): Promise<CarDataSample[]> {
+    const parts: string[] = [
+      `${API_CLIENT_SESSION_KEY_NAME}=${sessionKey}`,
+      `${API_CLIENT_DRIVER_NUMBER_KEY_NAME}=${driverNumber}`,
+    ];
+    const qs = parts.join('&');
+    const url = `${this.baseUrl}/car_data?${qs}`;
+    return this.fetchJson<CarDataSample[]>(url);
   }
 }

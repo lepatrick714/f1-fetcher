@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Race Telemetry Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        h1 {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+            color: #ff1e1e;
+            font-size: 2em;
+            z-index: 1000;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            background: rgba(13, 17, 23, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            opacity: 0.15;
+            transition: opacity 200ms ease-in-out;
+        }
+
+        .controls:hover,
+        .controls:focus-within {
+            opacity: 1;
+        }
+
+        .top-controls {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            background: rgba(13, 17, 23, 0.95);
+            padding: 10px;
+            border-radius: 8px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+
+        button:hover:not(:disabled) {
+            background: #2ea043;
+        }
+
+        button:disabled {
+            background: #484f58;
+            cursor: not-allowed;
+        }
+
+        input,
+        select {
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 6px;
+            border: 1px solid #30363d;
+            background: #161b22;
+            color: #e6edf3;
+        }
+
+        select {
+            min-width: 200px;
+        }
+
+        .info {
+            position: absolute;
+            top: 140px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: #8b949e;
+            text-align: center;
+            background: rgba(13, 17, 23, 0.95);
+            padding: 8px 15px;
+            border-radius: 6px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        .progress-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60%;
+            max-width: 800px;
+            z-index: 1000;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #161b22;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #30363d;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #238636, #2ea043);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .status-message {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #8b949e;
+            text-align: center;
+            min-height: 20px;
+        }
+
+        .status-error {
+            color: #f85149;
+        }
+
+        .status-warning {
+            color: #d29922;
+        }
+
+        .status-success {
+            color: #3fb950;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .legend {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            max-width: 150px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        .legend h3 {
+            margin: 0 0 10px 0;
+            color: #ff1e1e;
+            font-size: 1.1em;
+        }
+
+        .legend-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        .legend-headshot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1px solid #30363d;
+            object-fit: cover;
+        }
+
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            flex-shrink: 0;
+        }
+
+        .time-controls {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: rgba(13, 17, 23, 0.95);
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            width: 80%;
+            max-width: 1000px;
+            opacity: 0.15;
+            transition: opacity 200ms ease-in-out;
+        }
+
+        .time-controls:hover,
+        .time-controls:focus-within {
+            opacity: 1;
+        }
+
+        .time-controls label {
+            white-space: nowrap;
+            font-size: 14px;
+        }
+
+        #timeSlider {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        #timeDisplay {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 16px;
+            color: #58a6ff;
+            min-width: 80px;
+            text-align: right;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🏎️ F1 Race Telemetry Visualizer</h1>
+
+    <div class="top-controls">
+        <select id="cachedRaceSelect">
+            <option value="las_vegas_2023">Las Vegas 2023 (Race)</option>
+        </select>
+        <button id="loadCachedBtn">Load Race</button>
+    </div>
+
+    <div class="info" id="info">Click "Load Race" to begin</div>
+
+    <div class="progress-container" id="progressContainer" style="display: none;">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+        <div class="status-message" id="statusMessage">Ready</div>
+    </div>
+
+    <div class="time-controls">
+        <label for="timeSlider">Race Time:</label>
+        <input type="range" id="timeSlider" min="0" max="1000" value="0" disabled step="1">
+        <span id="timeDisplay">00:00:00</span>
+    </div>
+
+    <div class="controls">
+        <button id="playBtn" disabled>▶ Play</button>
+        <button id="pauseBtn" disabled>⏸ Pause</button>
+        <button id="resetBtn" disabled>⏮ Reset</button>
+        <label for="speedControl">Speed:</label>
+        <input type="range" id="speedControl" min="1" max="4" value="3" disabled style="width: 150px;" step="1">
+        <span id="speedValue" style="min-width: 30px;">1x</span>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="raceCanvas"></canvas>
+    </div>
+
+    <div class="legend" id="legend">
+        <h3>Drivers</h3>
+        <div class="legend-grid"></div>
+    </div>
+
+    <script>
+        // F1 Race Telemetry Visualizer
+        class F1Visualizer {
+            constructor() {
+                this.canvas = document.getElementById('raceCanvas');
+                this.ctx = this.canvas.getContext('2d');
+
+                // Set canvas to full screen
+                this.resizeCanvas();
+                window.addEventListener('resize', () => this.resizeCanvas());
+
+                this.raceData = null;
+                this.currentFrame = 0;
+                this.maxFrames = 0;
+                this.isPlaying = false;
+                this.animationSpeed = 1;
+                this.drivers = new Map();
+                this.trackBounds = null;
+                this.raceStartTime = null;
+                this.colors = [
+                    '#FF1E1E', '#00D2BE', '#0078D4', '#FFB000', '#00C851',
+                    '#FF6900', '#AA00FF', '#FFC0CB', '#8B4513', '#DC143C',
+                    '#32CD32', '#4169E1', '#FF1493', '#00CED1', '#FF4500',
+                    '#9ACD32', '#FF69B4', '#87CEEB', '#DDA0DD', '#F0E68C'
+                ];
+        
+            // Driver metadata cache (by driver_number)
+            this.driverInfo = new Map();
+
+                // Optional rotation for Geo track rendering (degrees, clockwise)
+                this.geoRotationDeg = 90;
+
+                // Las Vegas track GeoJSON coordinates
+                this.trackGeoJSON = {
+                    "coordinates": [[-115.161202, 36.109904], [-115.160589, 36.110461], [-115.160459, 36.110578], [-115.160366, 36.110705], [-115.160335, 36.110856], [-115.160414, 36.110992], [-115.160543, 36.111079], [-115.160775, 36.11115], [-115.160996, 36.111179], [-115.161209, 36.111169], [-115.161408, 36.111121], [-115.161844, 36.110909], [-115.162247, 36.110586], [-115.162402, 36.110503], [-115.162741, 36.110442], [-115.162924, 36.110445], [-115.163255, 36.110535], [-115.163438, 36.110617], [-115.163608, 36.110734], [-115.16389, 36.111042], [-115.164004, 36.111303], [-115.164082, 36.119035], [-115.164023, 36.119152], [-115.163908, 36.119211], [-115.161934, 36.119181], [-115.161342, 36.119184], [-115.161033, 36.119242], [-115.160908, 36.119329], [-115.160559, 36.119604], [-115.160402, 36.119783], [-115.160282, 36.119976], [-115.160195, 36.120145], [-115.160143, 36.120365], [-115.160107, 36.120627], [-115.160117, 36.120781], [-115.160225, 36.120836], [-115.160511, 36.120862], [-115.160611, 36.120913], [-115.160697, 36.12102], [-115.160731, 36.121187], [-115.160715, 36.121309], [-115.160438, 36.121696], [-115.16039, 36.121799], [-115.160274, 36.121977], [-115.160316, 36.122164], [-115.160541, 36.122284], [-115.160959, 36.122322], [-115.164089, 36.122386], [-115.165245, 36.122522], [-115.165627, 36.122671], [-115.166049, 36.123022], [-115.166411, 36.123607], [-115.166965, 36.124659], [-115.167321, 36.124962], [-115.16769, 36.125167], [-115.168065, 36.125279], [-115.168652, 36.125432], [-115.169318, 36.12554], [-115.169409, 36.125522], [-115.169496, 36.125468], [-115.169564, 36.125284], [-115.169633, 36.125158], [-115.170324, 36.124067], [-115.170754, 36.123418], [-115.170978, 36.123089], [-115.171208, 36.122772], [-115.171605, 36.122215], [-115.172013, 36.121466], [-115.172229, 36.1209], [-115.172466, 36.120249], [-115.172625, 36.119783], [-115.172744, 36.119319], [-115.172839, 36.118849], [-115.17294, 36.11816], [-115.172965, 36.117758], [-115.172991, 36.117279], [-115.17298, 36.115982], [-115.172974, 36.115241], [-115.172971, 36.114679], [-115.173104, 36.111742], [-115.173144, 36.110235], [-115.173145, 36.109483], [-115.173181, 36.108577], [-115.173118, 36.108504], [-115.173032, 36.10848], [-115.172826, 36.108483], [-115.172674, 36.108436], [-115.172332, 36.108159], [-115.172033, 36.108021], [-115.171635, 36.107958], [-115.169902, 36.107928], [-115.167635, 36.10795], [-115.16577, 36.107941], [-115.164859, 36.107951], [-115.164113, 36.108035], [-115.163333, 36.108155], [-115.16313, 36.10823], [-115.162966, 36.108313], [-115.162835, 36.108413], [-115.161202, 36.109904]],
+                    "bbox": [-115.173181, 36.107928, -115.160107, 36.125540]
+                };
+
+                this.setupEventListeners();
+                this.updateStatus('Click "Load Race" to begin');
+            }
+
+            resizeCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                if (this.raceData) {
+                    this.draw();
+                }
+            }
+
+            setupEventListeners() {
+                document.getElementById('playBtn').addEventListener('click', () => this.play());
+                document.getElementById('pauseBtn').addEventListener('click', () => this.pause());
+                document.getElementById('resetBtn').addEventListener('click', () => this.reset());
+
+                const speedControl = document.getElementById('speedControl');
+                const speedValue = document.getElementById('speedValue');
+                speedControl.addEventListener('input', (e) => {
+                    const val = parseInt(e.target.value);
+                    // Map slider values to speed multipliers
+                    const speeds = [0.25, 0.5, 1, 1.5];
+                    this.animationSpeed = speeds[val - 1];
+                    speedValue.textContent = this.animationSpeed + 'x';
+                });
+
+                const timeSlider = document.getElementById('timeSlider');
+                timeSlider.addEventListener('input', (e) => {
+                    this.currentFrame = parseInt(e.target.value);
+                    this.rebuildTrails();
+                    this.draw();
+                    this.updateTimeDisplay();
+                });
+
+                timeSlider.addEventListener('mousedown', () => {
+                    this.wasPlayingBeforeScrub = this.isPlaying;
+                    this.pause();
+                });
+
+                timeSlider.addEventListener('mouseup', () => {
+                    if (this.wasPlayingBeforeScrub) {
+                        this.play();
+                    }
+                });
+
+                document.getElementById('loadCachedBtn').addEventListener('click', () => {
+                    this.loadLasVegasRace();
+                });
+            }
+
+            async loadLasVegasRace() {
+                try {
+                    this.updateStatus('Loading Las Vegas race data...');
+
+                    const response = await fetch('./f1_data/f1_race_Las_Vegas_9189.json');
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to load race data: ${response.status}`);
+                    }
+
+                    this.raceData = await response.json();
+                    this.processRaceData();
+                    // Fetch driver headshots and metadata for this session
+                    await this.loadDriverInfo();
+                    this.updateStatus('Las Vegas race loaded successfully!');
+                    this.updateInfo();
+                    this.enableControls();
+                    this.reset();
+
+                } catch (error) {
+                    console.error('Error loading race:', error);
+                    this.updateStatus(`Error: ${error.message}`);
+
+                    try {
+                        const response2 = await fetch('f1_data/f1_race_Las_Vegas_9189.json');
+                        if (response2.ok) {
+                            this.raceData = await response2.json();
+                            this.processRaceData();
+                            await this.loadDriverInfo();
+                            this.updateStatus('Las Vegas race loaded successfully!');
+                            this.updateInfo();
+                            this.enableControls();
+                            this.reset();
+                        }
+                    } catch (altError) {
+                        console.error('Alternative path failed:', altError);
+                    }
+                }
+            }
+
+            async loadDriverInfo() {
+                try {
+                    if (!this.raceData?.sessionInfo?.session_key) return;
+                    const sk = this.raceData.sessionInfo.session_key;
+                    const url = `https://api.openf1.org/v1/drivers?session_key=${sk}`;
+                    const res = await fetch(url);
+                    if (!res.ok) return;
+                    const arr = await res.json();
+                    // Map by driver number (last entry wins)
+                    this.driverInfo.clear();
+                    for (const info of arr) {
+                        if (info && typeof info.driver_number === 'number') {
+                            this.driverInfo.set(info.driver_number, info);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Driver info fetch failed', e);
+                }
+            }
+
+            processRaceData() {
+                if (!this.raceData || !this.raceData.locationData) {
+                    console.error('No race data or location data found');
+                    return;
+                }
+
+                this.drivers.clear();
+                let colorIndex = 0;
+                this.maxFrames = 0;
+
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                let minZ = Infinity, maxZ = -Infinity;
+                let earliestTime = null;
+
+                for (const [driverNumber, locations] of Object.entries(this.raceData.locationData)) {
+                    if (!locations || locations.length === 0) continue;
+
+                    const sortedLocations = locations.sort((a, b) =>
+                        new Date(a.date).getTime() - new Date(b.date).getTime()
+                    );
+
+                    if (sortedLocations.length > 0) {
+                        const driverStartTime = new Date(sortedLocations[0].date);
+                        if (!earliestTime || driverStartTime < earliestTime) {
+                            earliestTime = driverStartTime;
+                        }
+                    }
+
+                    for (const point of sortedLocations) {
+                        minX = Math.min(minX, point.x);
+                        maxX = Math.max(maxX, point.x);
+                        minY = Math.min(minY, point.y);
+                        maxY = Math.max(maxY, point.y);
+                        minZ = Math.min(minZ, point.z);
+                        maxZ = Math.max(maxZ, point.z);
+                    }
+
+                    this.drivers.set(parseInt(driverNumber), {
+                        number: parseInt(driverNumber),
+                        color: this.colors[colorIndex % this.colors.length],
+                        locations: sortedLocations,
+                        trail: []
+                    });
+
+                    this.maxFrames = Math.max(this.maxFrames, sortedLocations.length);
+                    colorIndex++;
+                }
+
+                const rangeX = maxX - minX;
+                const rangeY = maxY - minY;
+                const rangeZ = maxZ - minZ;
+
+                const axes = [
+                    { key: 'x', range: rangeX, min: minX, max: maxX },
+                    { key: 'y', range: rangeY, min: minY, max: maxY },
+                    { key: 'z', range: rangeZ, min: minZ, max: maxZ },
+                ].sort((a, b) => b.range - a.range);
+
+                this.axisH = axes[0].key;
+                this.axisV = axes[1].key;
+
+                this.trackBounds = {
+                    minH: axes[0].min,
+                    maxH: axes[0].max,
+                    minV: axes[1].min,
+                    maxV: axes[1].max,
+                };
+                this.raceStartTime = earliestTime;
+
+                console.log(`Processed ${this.drivers.size} drivers, ${this.maxFrames} frames`);
+                console.log(`Using axes: H=${this.axisH}, V=${this.axisV}`);
+
+                // If GeoJSON is available, compute alignment from telemetry to Geo lon/lat
+                if (this.trackGeoJSON && Array.isArray(this.trackGeoJSON.coordinates) && this.trackGeoJSON.coordinates.length > 3) {
+                    try {
+                        this.computeGeoAlignment();
+                        console.log('Computed telemetry->geo alignment');
+                    } catch (e) {
+                        console.warn('Geo alignment failed, using independent mappings:', e);
+                        this._telemetryToGeo = null;
+                    }
+                }
+            }
+
+            updateInfo() {
+                if (!this.raceData) return;
+
+                const session = this.raceData.sessionInfo;
+                const driverCount = Object.keys(this.raceData.locationData).length;
+
+                document.getElementById('info').innerHTML = `
+            <strong>${session.location} ${session.session_name}</strong> - ${session.year}<br>
+            ${new Date(session.date_start).toLocaleDateString()} | 
+            ${driverCount} drivers | ${session.circuit_short_name}
+        `;
+            }
+
+            updateStatus(message) {
+                const statusElement = document.getElementById('statusMessage');
+                if (statusElement) {
+                    statusElement.textContent = message;
+                }
+            }
+
+            enableControls() {
+                document.getElementById('playBtn').disabled = false;
+                document.getElementById('pauseBtn').disabled = false;
+                document.getElementById('resetBtn').disabled = false;
+                document.getElementById('speedControl').disabled = false;
+                document.getElementById('timeSlider').disabled = false;
+
+                const timeSlider = document.getElementById('timeSlider');
+                timeSlider.max = this.maxFrames - 1;
+                timeSlider.value = 0;
+            }
+
+            play() {
+                if (!this.raceData || this.isPlaying) return;
+                this.isPlaying = true;
+                this.animate();
+            }
+
+            pause() {
+                this.isPlaying = false;
+            }
+
+            reset() {
+                this.pause();
+                this.currentFrame = 0;
+
+                for (const driver of this.drivers.values()) {
+                    driver.trail = [];
+                }
+
+                document.getElementById('timeSlider').value = 0;
+                this.draw();
+                this.updateTimeDisplay();
+            }
+
+            rebuildTrails() {
+                for (const driver of this.drivers.values()) {
+                    driver.trail = [];
+                    const startFrame = Math.max(0, this.currentFrame - 50);
+                    const endFrame = Math.min(this.currentFrame, driver.locations.length - 1);
+
+                    for (let i = startFrame; i <= endFrame; i += 2) {
+                        if (i < driver.locations.length) {
+                            const point = driver.locations[i];
+                            const canvasPos = this.trackToCanvas(point);
+                            driver.trail.push(canvasPos);
+                        }
+                    }
+                }
+            }
+
+            animate() {
+                if (!this.isPlaying) return;
+
+                this.currentFrame += this.animationSpeed;
+
+                if (this.currentFrame >= this.maxFrames) {
+                    this.pause();
+                    this.updateStatus('Race replay completed!');
+                    return;
+                }
+
+                this.draw();
+                this.updateTimeDisplay();
+                document.getElementById('timeSlider').value = this.currentFrame;
+
+                requestAnimationFrame(() => this.animate());
+            }
+
+            draw() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Draw track background and borders FIRST
+                this.drawTrackBounds();
+
+                // Draw the actual circuit path (GeoJSON if available, else telemetry path)
+                this.drawTrackPath();
+
+                // Then draw all drivers on top
+                for (const driver of this.drivers.values()) {
+                    this.drawDriver(driver);
+                }
+
+                this.updateLegend();
+            }
+
+            drawTrackBounds() {
+                if (!this.trackBounds) {
+                    console.log('No track bounds available');
+                    return;
+                }
+
+                const padding = 50;
+                const canvasWidth = this.canvas.width - 2 * padding;
+                const canvasHeight = this.canvas.height - 2 * padding;
+
+                // Draw track background (darker area)
+                this.ctx.fillStyle = '#1a1f28';
+                this.ctx.fillRect(padding, padding, canvasWidth, canvasHeight);
+
+                // Draw outer track border with F1 red
+                this.ctx.strokeStyle = '#FF1E1E';
+                this.ctx.lineWidth = 4;
+                this.ctx.strokeRect(padding, padding, canvasWidth, canvasHeight);
+
+                // Draw inner border for depth
+                this.ctx.strokeStyle = '#404854';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(padding + 8, padding + 8, canvasWidth - 16, canvasHeight - 16);
+
+                // Add corner markers
+                const markerSize = 20;
+                this.ctx.fillStyle = '#FFB000';
+                // Top-left
+                this.ctx.fillRect(padding, padding, markerSize, 4);
+                this.ctx.fillRect(padding, padding, 4, markerSize);
+                // Top-right
+                this.ctx.fillRect(padding + canvasWidth - markerSize, padding, markerSize, 4);
+                this.ctx.fillRect(padding + canvasWidth - 4, padding, 4, markerSize);
+                // Bottom-left
+                this.ctx.fillRect(padding, padding + canvasHeight - 4, markerSize, 4);
+                this.ctx.fillRect(padding, padding + canvasHeight - markerSize, 4, markerSize);
+                // Bottom-right
+                this.ctx.fillRect(padding + canvasWidth - markerSize, padding + canvasHeight - 4, markerSize, 4);
+                this.ctx.fillRect(padding + canvasWidth - 4, padding + canvasHeight - markerSize, 4, markerSize);
+            }
+
+            drawTrackPath() {
+                // Prefer GeoJSON track if available
+                if (this.trackGeoJSON && Array.isArray(this.trackGeoJSON.coordinates) && this.trackGeoJSON.coordinates.length > 1) {
+                    const geoPts = this.trackGeoJSON.coordinates.map(([lon, lat]) => this.geoToCanvas(lon, lat));
+                    if (geoPts.length < 2) return;
+
+                    // Track outline
+                    this.ctx.strokeStyle = '#404854';
+                    this.ctx.lineWidth = 8;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineJoin = 'round';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(geoPts[0].x, geoPts[0].y);
+                    for (let i = 1; i < geoPts.length; i++) {
+                        this.ctx.lineTo(geoPts[i].x, geoPts[i].y);
+                    }
+                    this.ctx.stroke();
+
+                    // Center line
+                    this.ctx.strokeStyle = '#2a3038';
+                    this.ctx.lineWidth = 4;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(geoPts[0].x, geoPts[0].y);
+                    for (let i = 1; i < geoPts.length; i++) {
+                        this.ctx.lineTo(geoPts[i].x, geoPts[i].y);
+                    }
+                    this.ctx.stroke();
+
+                    // Start marker
+                    const startPos = geoPts[0];
+                    this.ctx.strokeStyle = '#FFFFFF';
+                    this.ctx.lineWidth = 6;
+                    this.ctx.setLineDash([10, 10]);
+                    this.ctx.beginPath();
+                    this.ctx.arc(startPos.x, startPos.y, 15, 0, 2 * Math.PI);
+                    this.ctx.stroke();
+                    this.ctx.setLineDash([]);
+                    this.ctx.fillStyle = '#FFFFFF';
+                    this.ctx.font = 'bold 16px Arial';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText('START', startPos.x, startPos.y - 25);
+                    return;
+                }
+
+                // Fallback: derive track from telemetry
+                if (!this.drivers.size) return;
+                const referenceDriver = this.drivers.values().next().value;
+                if (!referenceDriver || !referenceDriver.locations.length) return;
+                const sampleRate = Math.max(1, Math.floor(referenceDriver.locations.length / 500));
+                const trackPoints = [];
+                for (let i = 0; i < referenceDriver.locations.length; i += sampleRate) {
+                    const point = referenceDriver.locations[i];
+                    const canvasPos = this.trackToCanvas(point);
+                    trackPoints.push(canvasPos);
+                }
+                if (trackPoints.length < 2) return;
+                this.ctx.strokeStyle = '#404854';
+                this.ctx.lineWidth = 8;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.beginPath();
+                this.ctx.moveTo(trackPoints[0].x, trackPoints[0].y);
+                for (let i = 1; i < trackPoints.length; i++) {
+                    this.ctx.lineTo(trackPoints[i].x, trackPoints[i].y);
+                }
+                this.ctx.stroke();
+                this.ctx.strokeStyle = '#2a3038';
+                this.ctx.lineWidth = 4;
+                this.ctx.beginPath();
+                this.ctx.moveTo(trackPoints[0].x, trackPoints[0].y);
+                for (let i = 1; i < trackPoints.length; i++) {
+                    this.ctx.lineTo(trackPoints[i].x, trackPoints[i].y);
+                }
+                this.ctx.stroke();
+            }
+
+            // Map GeoJSON lon/lat into the same canvas drawing area as telemetry
+            geoToCanvas(lon, lat) {
+                const padding = 50; // keep in sync with drawTrackBounds/trackToCanvas
+                const canvasWidth = this.canvas.width - 2 * padding;
+                const canvasHeight = this.canvas.height - 2 * padding;
+
+                // Use bbox if provided, else compute from coordinates
+                let minLon, minLat, maxLon, maxLat;
+                if (Array.isArray(this.trackGeoJSON?.bbox) && this.trackGeoJSON.bbox.length === 4) {
+                    [minLon, minLat, maxLon, maxLat] = this.trackGeoJSON.bbox;
+                } else {
+                    const lons = this.trackGeoJSON.coordinates.map(([x]) => x);
+                    const lats = this.trackGeoJSON.coordinates.map(([, y]) => y);
+                    minLon = Math.min(...lons);
+                    maxLon = Math.max(...lons);
+                    minLat = Math.min(...lats);
+                    maxLat = Math.max(...lats);
+                }
+
+                const rangeLon = Math.max(1e-9, maxLon - minLon);
+                const rangeLat = Math.max(1e-9, maxLat - minLat);
+
+                const scaleLon = canvasWidth / rangeLon;
+                const scaleLat = canvasHeight / rangeLat;
+                const scale = Math.min(scaleLon, scaleLat) * 0.95;
+
+                const scaledWidth = rangeLon * scale;
+                const scaledHeight = rangeLat * scale;
+
+                const offsetX = (canvasWidth - scaledWidth) / 2;
+                const offsetY = (canvasHeight - scaledHeight) / 2;
+
+                const normLon = (lon - minLon) / rangeLon;
+                const normLat = (lat - minLat) / rangeLat;
+
+                // Flip latitude so north is up (optional; looks more map-like)
+                const normLatFlipped = 1 - normLat;
+
+                // Base (unrotated) canvas coordinates
+                let x = padding + offsetX + normLon * scaledWidth;
+                let y = padding + offsetY + normLatFlipped * scaledHeight;
+
+                // Apply optional rotation around the drawing area's center
+                const rot = (this.geoRotationDeg || 0);
+                if (rot % 360 !== 0) {
+                    const cx = padding + offsetX + scaledWidth / 2;
+                    const cy = padding + offsetY + scaledHeight / 2;
+                    const rad = rot * Math.PI / 180; // clockwise positive
+                    const cos = Math.cos(rad), sin = Math.sin(rad);
+                    const dx = x - cx, dy = y - cy;
+                    const rx = dx * cos - dy * sin;
+                    const ry = dx * sin + dy * cos;
+                    x = cx + rx;
+                    y = cy + ry;
+                }
+
+                return { x, y };
+            }
+
+            drawDriver(driver) {
+                const frameIndex = Math.floor(this.currentFrame);
+                if (frameIndex >= driver.locations.length) return;
+
+                const point = driver.locations[frameIndex];
+                if (!point) return;
+
+                const canvasPos = this.trackToCanvas(point);
+
+                if (canvasPos.x < 0 || canvasPos.y < 0 ||
+                    canvasPos.x > this.canvas.width || canvasPos.y > this.canvas.height) {
+                    return;
+                }
+
+                if (this.isPlaying) {
+                    driver.trail.push(canvasPos);
+                    if (driver.trail.length > 100) {
+                        driver.trail.shift();
+                    }
+                }
+
+                if (driver.trail.length > 1) {
+                    this.ctx.strokeStyle = driver.color + '80';
+                    this.ctx.lineWidth = 2; // thinner trail to match geo scale
+                    this.ctx.lineCap = 'round';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(driver.trail[0].x, driver.trail[0].y);
+                    for (let i = 1; i < driver.trail.length; i++) {
+                        this.ctx.lineTo(driver.trail[i].x, driver.trail[i].y);
+                    }
+                    this.ctx.stroke();
+                }
+
+                // Responsive car marker size
+                const base = Math.min(this.canvas.width, this.canvas.height);
+                const carRadius = Math.max(2, Math.min(6, Math.round(base * 0.003))); // ~0.3% of min dimension
+
+                this.ctx.fillStyle = driver.color;
+                this.ctx.beginPath();
+                this.ctx.arc(canvasPos.x, canvasPos.y, carRadius, 0, 2 * Math.PI);
+                this.ctx.fill();
+
+                this.ctx.strokeStyle = '#ffffff';
+                this.ctx.lineWidth = 1.5;
+                this.ctx.stroke();
+
+                // Smaller driver number badge
+                this.ctx.fillStyle = '#000000';
+                this.ctx.fillRect(canvasPos.x - 10, canvasPos.y - (carRadius + 14), 20, 12);
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.font = 'bold 10px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(driver.number.toString(), canvasPos.x, canvasPos.y - (carRadius + 8));
+            }
+
+            trackToCanvas(point) {
+                if (!this.trackBounds) return { x: 0, y: 0 };
+
+                // If we have a telemetry->geo alignment and GeoJSON bounds, project telemetry onto the Geo track space
+                if (this._telemetryToGeo && this.trackGeoJSON) {
+                    const lonlat = this.telemetryPointToLonLat(point);
+                    return this.geoToCanvas(lonlat.lon, lonlat.lat);
+                }
+
+                // Fallback: map telemetry directly into canvas drawing area
+                const padding = 15; // keep in sync with drawTrackBounds
+                const canvasWidth = this.canvas.width - 2 * padding;
+                const canvasHeight = this.canvas.height - 2 * padding;
+
+                const hVal = point[this.axisH];
+                const vVal = point[this.axisV];
+
+                const rangeH = this.trackBounds.maxH - this.trackBounds.minH;
+                const rangeV = this.trackBounds.maxV - this.trackBounds.minV;
+
+                const scaleH = canvasWidth / rangeH;
+                const scaleV = canvasHeight / rangeV;
+                const scale = Math.min(scaleH, scaleV) * 0.56; // fit factor
+
+                const scaledWidth = rangeH * scale;
+                const scaledHeight = rangeV * scale;
+
+                const offsetH = (canvasWidth - scaledWidth) / 2;
+                const offsetV = (canvasHeight - scaledHeight) / 2;
+
+                const normalizedH = (hVal - this.trackBounds.minH) / rangeH;
+                const normalizedV = (vVal - this.trackBounds.minV) / rangeV;
+
+                return {
+                    x: padding + offsetH + normalizedH * scaledWidth,
+                    y: padding + offsetV + normalizedV * scaledHeight
+                };
+            }
+
+            // Map a telemetry point (using selected axes) to lon/lat using the learned affine transform
+            telemetryPointToLonLat(point) {
+                if (!this._telemetryToGeo) {
+                    return { lon: 0, lat: 0 };
+                }
+                const x = point[this.axisH];
+                const y = point[this.axisV];
+                const { a, b, tx, c, d, ty } = this._telemetryToGeo;
+                const lon = a * x + b * y + tx;
+                const lat = c * x + d * y + ty;
+                return { lon, lat };
+            }
+
+            // Compute a similarity transform (scale, rotation, translation) aligning telemetry (H,V) to GeoJSON (lon,lat)
+            computeGeoAlignment() {
+                if (!this.drivers.size) return;
+                const referenceDriver = this.drivers.values().next().value;
+                if (!referenceDriver || !referenceDriver.locations.length) return;
+
+                // Extract a single clean lap from telemetry to avoid multi-lap distortion
+                const lapPolyline = this.extractReferenceLap(referenceDriver.locations);
+                const telemPolyline = (lapPolyline && lapPolyline.length >= 10)
+                    ? lapPolyline
+                    : referenceDriver.locations.slice(0, Math.min(3000, referenceDriver.locations.length))
+                        .map(p => [p[this.axisV], -p[this.axisH]]);
+
+                // Build Geo polyline from lon/lat
+                const geoPolyline = this.trackGeoJSON.coordinates.map(([lon, lat]) => [lon, lat]);
+
+                // Resample both polylines by arc length to comparable point counts
+                const N = 200;
+                const telemSamples = this.resampleByArcLength(telemPolyline, N);
+                let geoSamples = this.resampleByArcLength(geoPolyline, N);
+
+                if (telemSamples.length < 10 || geoSamples.length < 10) {
+                    throw new Error('Insufficient points after resampling');
+                }
+
+                // Try both orientations (normal and reversed), and multiple circular shifts to minimize error
+                const tryOrientations = [geoSamples, [...geoSamples].reverse()];
+                let best = { error: Infinity, params: null, target: null };
+                const shifts = 36; // test ~10-degree equivalent shifts around the loop
+
+                for (const oriented of tryOrientations) {
+                    for (let s = 0; s < shifts; s++) {
+                        const shifted = this.circularShift(oriented, Math.floor((s * N) / shifts));
+                        const params = this.procrustesSimilarity2D(telemSamples, shifted);
+                        if (params && params.error < best.error) {
+                            best = { error: params.error, params, target: shifted };
+                        }
+                    }
+                }
+
+                if (!best.params || !best.target) throw new Error('Could not find a stable alignment');
+
+                // Refine with full affine to capture slight anisotropy between sources
+                const affine = this.solveAffineLeastSquares(telemSamples, best.target);
+                if (affine) {
+                    this._telemetryToGeo = affine;
+                    const affErr = this.computeAffineResidual(telemSamples, best.target, affine);
+                    console.log('Alignment residual (affine avg sq error):', affErr.toFixed(6));
+                } else {
+                    // Fallback to similarity parameters
+                    const { scale, cos, sin, tx, ty } = best.params;
+                    this._telemetryToGeo = { a: scale * cos, b: -scale * sin, tx, c: scale * sin, d: scale * cos, ty };
+                    console.log('Alignment residual (similarity avg sq error):', best.error.toFixed(6));
+                }
+            }
+
+            // Attempt to extract a single lap from telemetry for alignment
+            extractReferenceLap(locations) {
+                if (!locations || locations.length < 50) return null;
+                const pts = locations.map(p => [p[this.axisH], p[this.axisV]]);
+                const times = locations.map(p => new Date(p.date).getTime());
+
+                const start = pts[0];
+                const rangeH = this.trackBounds.maxH - this.trackBounds.minH;
+                const rangeV = this.trackBounds.maxV - this.trackBounds.minV;
+                const approxTrackDiag = Math.hypot(rangeH, rangeV);
+                const radius = Math.max(approxTrackDiag * 0.03, 5); // 3% of diag or 5 units
+                const minLapMs = 40 * 1000; // 40s minimum lap
+                const maxLapMs = 180 * 1000; // 3 minutes guard
+
+                let firstIdx = 0;
+                let secondIdx = -1;
+                for (let i = 10; i < pts.length; i++) {
+                    const d = Math.hypot(pts[i][0] - start[0], pts[i][1] - start[1]);
+                    const dt = times[i] - times[firstIdx];
+                    if (d < radius && dt > minLapMs) {
+                        // Consider as lap boundary; ensure not absurdly long
+                        if (dt < maxLapMs) { secondIdx = i; break; }
+                        // If too long, move window forward
+                        firstIdx = i; // reset
+                    }
+                }
+                if (secondIdx === -1) return null;
+                return pts.slice(firstIdx, secondIdx + 1);
+            }
+
+            // Evenly resample a polyline by arc length to N points (including endpoints)
+            resampleByArcLength(points, N) {
+                if (!points || points.length < 2) return [];
+                const segLens = [];
+                let total = 0;
+                for (let i = 1; i < points.length; i++) {
+                    const dx = points[i][0] - points[i - 1][0];
+                    const dy = points[i][1] - points[i - 1][1];
+                    const len = Math.hypot(dx, dy);
+                    segLens.push(len);
+                    total += len;
+                }
+                if (total === 0) return points.slice(0, N);
+                const result = [];
+                let target = 0;
+                let acc = 0;
+                let j = 1;
+                result.push(points[0]);
+                for (let k = 1; k < N - 1; k++) {
+                    target = (k / (N - 1)) * total;
+                    while (j < points.length && acc + segLens[j - 1] < target) {
+                        acc += segLens[j - 1];
+                        j++;
+                    }
+                    if (j >= points.length) {
+                        result.push(points[points.length - 1]);
+                    } else {
+                        const remain = target - acc;
+                        const t = Math.max(0, Math.min(1, remain / segLens[j - 1] || 0));
+                        const x = points[j - 1][0] + t * (points[j][0] - points[j - 1][0]);
+                        const y = points[j - 1][1] + t * (points[j][1] - points[j - 1][1]);
+                        result.push([x, y]);
+                    }
+                }
+                result.push(points[points.length - 1]);
+                return result;
+            }
+
+            circularShift(arr, k) {
+                const n = arr.length;
+                const s = ((k % n) + n) % n;
+                return arr.slice(s).concat(arr.slice(0, s));
+            }
+
+            // Procrustes-like similarity transform (2D): source -> target
+            procrustesSimilarity2D(source, target) {
+                const n = Math.min(source.length, target.length);
+                if (n < 2) return null;
+                // centroids
+                let sx = 0, sy = 0, tx = 0, ty = 0;
+                for (let i = 0; i < n; i++) { sx += source[i][0]; sy += source[i][1]; tx += target[i][0]; ty += target[i][1]; }
+                sx /= n; sy /= n; tx /= n; ty /= n;
+                // centered
+                let a = 0, b = 0, c = 0; // a = sum x·x', b = sum cross, c = sum ||x||^2
+                for (let i = 0; i < n; i++) {
+                    const x = source[i][0] - sx;
+                    const y = source[i][1] - sy;
+                    const u = target[i][0] - tx;
+                    const v = target[i][1] - ty;
+                    a += x * u + y * v;
+                    b += x * v - y * u;
+                    c += x * x + y * y;
+                }
+                if (c < 1e-12) return null;
+                const theta = Math.atan2(b, a);
+                const cos = Math.cos(theta);
+                const sin = Math.sin(theta);
+                const scale = (cos * a + sin * b) / c;
+                // translation: t = target_centroid - s R source_centroid
+                const tX = tx - scale * (cos * sx - sin * sy);
+                const tY = ty - scale * (sin * sx + cos * sy);
+
+                // compute residual error
+                let err = 0;
+                for (let i = 0; i < n; i++) {
+                    const x = source[i][0];
+                    const y = source[i][1];
+                    const px = scale * (cos * x - sin * y) + tX;
+                    const py = scale * (sin * x + cos * y) + tY;
+                    const dx = px - target[i][0];
+                    const dy = py - target[i][1];
+                    err += dx * dx + dy * dy;
+                }
+                err /= n;
+                return { scale, cos, sin, tx: tX, ty: tY, error: err };
+            }
+
+            // Solve for full affine mapping (a,b,tx,c,d,ty) minimizing LSQ from source->target
+            solveAffineLeastSquares(source, target) {
+                const n = Math.min(source.length, target.length);
+                if (n < 3) return null;
+                // Build normal equations A^T A x = A^T b (6x6)
+                const N = 6;
+                const ATA = Array.from({ length: N }, () => Array(N).fill(0));
+                const ATb = Array(N).fill(0);
+                const addRow = (row, rhs) => {
+                    for (let r = 0; r < N; r++) {
+                        for (let c = 0; c < N; c++) ATA[r][c] += row[r] * row[c];
+                        ATb[r] += row[r] * rhs;
+                    }
+                };
+                for (let i = 0; i < n; i++) {
+                    const x = source[i][0], y = source[i][1];
+                    const u = target[i][0], v = target[i][1];
+                    addRow([x, y, 1, 0, 0, 0], u); // u = a x + b y + tx
+                    addRow([0, 0, 0, x, y, 1], v); // v = c x + d y + ty
+                }
+                const sol = this.gaussSolve(ATA, ATb);
+                if (!sol) return null;
+                const [a, b, tx, c, d, ty] = sol;
+                return { a, b, tx, c, d, ty };
+            }
+
+            computeAffineResidual(source, target, affine) {
+                const n = Math.min(source.length, target.length);
+                if (n === 0) return Infinity;
+                let err = 0;
+                const { a, b, tx, c, d, ty } = affine;
+                for (let i = 0; i < n; i++) {
+                    const x = source[i][0], y = source[i][1];
+                    const px = a * x + b * y + tx;
+                    const py = c * x + d * y + ty;
+                    const dx = px - target[i][0];
+                    const dy = py - target[i][1];
+                    err += dx * dx + dy * dy;
+                }
+                return err / n;
+            }
+
+            // Simple Gaussian elimination solver for small dense systems
+            gaussSolve(A, b) {
+                const n = A.length;
+                // build augmented matrix
+                const M = A.map((row, i) => row.concat(b[i]));
+                for (let i = 0; i < n; i++) {
+                    // pivot
+                    let maxRow = i;
+                    for (let k = i + 1; k < n; k++) {
+                        if (Math.abs(M[k][i]) > Math.abs(M[maxRow][i])) maxRow = k;
+                    }
+                    if (Math.abs(M[maxRow][i]) < 1e-12) return null;
+                    if (maxRow !== i) { const tmp = M[i]; M[i] = M[maxRow]; M[maxRow] = tmp; }
+                    // normalize
+                    const pivot = M[i][i];
+                    for (let j = i; j <= n; j++) M[i][j] /= pivot;
+                    // eliminate
+                    for (let k = 0; k < n; k++) {
+                        if (k === i) continue;
+                        const f = M[k][i];
+                        for (let j = i; j <= n; j++) M[k][j] -= f * M[i][j];
+                    }
+                }
+                return M.map(row => row[n]);
+            }
+
+            updateTimeDisplay() {
+                if (!this.raceStartTime || !this.drivers.size) return;
+
+                let currentTime = null;
+                for (const driver of this.drivers.values()) {
+                    if (this.currentFrame < driver.locations.length) {
+                        const point = driver.locations[Math.floor(this.currentFrame)];
+                        if (point && point.date) {
+                            currentTime = new Date(point.date);
+                            break;
+                        }
+                    }
+                }
+
+                if (!currentTime) {
+                    document.getElementById('timeDisplay').textContent = '00:00:00';
+                    return;
+                }
+
+                const elapsedMs = currentTime.getTime() - this.raceStartTime.getTime();
+                const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+
+                const hours = Math.floor(elapsedSeconds / 3600);
+                const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+                const seconds = elapsedSeconds % 60;
+
+                const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                document.getElementById('timeDisplay').textContent = timeStr;
+            }
+
+            updateLegend() {
+                const legendGrid = document.querySelector('.legend-grid');
+                if (!legendGrid || this.drivers.size === 0) return;
+
+                const driverList = Array.from(this.drivers.values())
+                    .sort((a, b) => a.number - b.number)
+                    .map(driver => {
+                        const info = this.driverInfo.get(driver.number);
+                        const img = info?.headshot_url ? `<img class="legend-headshot" src="${info.headshot_url}" alt="${info?.last_name || ''}">` : `<div class="legend-color" style="background-color: ${driver.color}"></div>`;
+                        const name = info?.name_acronym || info?.last_name || `#${driver.number}`;
+                        return `
+                        <div class="legend-item">
+                            ${img}
+                            <span>#${driver.number} ${name}</span>
+                        </div>`;
+                    }).join('');
+
+                legendGrid.innerHTML = driverList;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new F1Visualizer();
+        });
+    </script>
+</body>
+
+</html>

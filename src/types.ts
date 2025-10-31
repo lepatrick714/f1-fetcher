@@ -30,3 +30,33 @@ export interface SavedRaceData {
   telemetryData: { [driverNumber: string]: TelemetryPoint[] };
   savedAt: string;
 }
+
+// OpenF1 driver info
+export interface DriverInfo {
+  broadcast_name?: string;
+  country_code?: string;
+  driver_number: number;
+  first_name?: string;
+  full_name?: string;
+  headshot_url?: string;
+  last_name?: string;
+  meeting_key?: number;
+  name_acronym?: string;
+  session_key?: number;
+  team_colour?: string; // RRGGBB
+  team_name?: string;
+}
+
+// OpenF1 car_data sample (3.7 Hz)
+export interface CarDataSample {
+  brake: number; // 0 or 100
+  date: string; // ISO8601
+  driver_number: number;
+  drs: number; // enum-like status
+  meeting_key: number;
+  n_gear: number; // 0..8
+  rpm: number;
+  session_key: number;
+  speed: number; // km/h
+  throttle: number; // percent
+}

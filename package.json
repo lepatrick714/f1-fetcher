@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "npx tsc f1-fetcher.ts",
-        "start": "tsx f1-fetcher.ts"
+        "start": "tsx f1-fetcher.ts",
+        "serve": "npx http-server -p 8000"
     },
     "dependencies": {
         "@types/node": "^20.0.0",

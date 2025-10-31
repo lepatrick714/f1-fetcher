@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Telemetry Infrastructure</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 50px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 42px;
+            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        .header .subtitle {
+            font-size: 18px;
+            color: #a8b2d1;
+            font-weight: 300;
+        }
+
+        .data-highlight {
+            background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+            padding: 30px 50px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .stat {
+            text-align: center;
+            color: white;
+        }
+
+        .stat-number {
+            font-size: 48px;
+            font-weight: 700;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 50px;
+        }
+
+        .tier-section {
+            margin-bottom: 50px;
+        }
+
+        .tier-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            padding: 35px;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tier-card:hover {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .tier-free {
+            border-color: #90caf9;
+            background: linear-gradient(135deg, #f5f9ff 0%, #e3f2fd 100%);
+        }
+
+        .tier-pro {
+            border-color: #ce93d8;
+            background: linear-gradient(135deg, #faf5ff 0%, #f3e5f5 100%);
+        }
+
+        .tier-enterprise {
+            border-color: #ffd54f;
+            background: linear-gradient(135deg, #fffef5 0%, #fff9e5 100%);
+        }
+
+        .tier-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .badge-free {
+            background: #2196f3;
+            color: white;
+        }
+
+        .badge-pro {
+            background: #9c27b0;
+            color: white;
+        }
+
+        .badge-enterprise {
+            background: #ffa726;
+            color: white;
+        }
+
+        .tier-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-right: 120px;
+        }
+
+        .tier-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-right: 15px;
+        }
+
+        .tier-price {
+            font-size: 20px;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .server-visual {
+            display: flex;
+            gap: 15px;
+            margin: 25px 0;
+            flex-wrap: wrap;
+        }
+
+        .server {
+            width: 60px;
+            height: 80px;
+            background: linear-gradient(135deg, #455a64 0%, #263238 100%);
+            border-radius: 8px;
+            position: relative;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .server::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 4px;
+            background: #4caf50;
+            border-radius: 2px;
+            box-shadow: 0 8px 0 #2196f3, 0 16px 0 #ff9800;
+        }
+
+        .server-label {
+            margin-top: 5px;
+            text-align: center;
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .specs-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin: 25px 0;
+        }
+
+        .spec-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .spec-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .spec-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+
+        .capacity-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .capacity-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #1a1a2e;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .capacity-list {
+            list-style: none;
+        }
+
+        .capacity-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            font-size: 15px;
+            color: #444;
+        }
+
+        .capacity-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .footer {
+            background: #f5f5f5;
+            padding: 30px 50px;
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+        }
+
+        .recommendation {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .recommendation h3 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .recommendation p {
+            font-size: 15px;
+            opacity: 0.95;
+        }
+
+        @media print {
+            body {
+                padding: 0;
+                background: white;
+            }
+
+            .container {
+                box-shadow: none;
+            }
+
+            .tier-card {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏎️ F1 Telemetry Service</h1>
+            <p class="subtitle">Infrastructure Scaling Plan & Cost Analysis</p>
+        </div>
+
+        <div class="data-highlight">
+            <div class="stat">
+                <span class="stat-number">130.79 MB</span>
+                <span class="stat-label">Per Session</span>
+            </div>
+            <div class="stat">
+                <span class="stat-number">12-24</span>
+                <span class="stat-label">Sessions/Weekend</span>
+            </div>
+            <div class="stat">
+                <span class="stat-number">~3.1 GB</span>
+                <span class="stat-label">Per Race Weekend</span>
+            </div>
+            <div class="stat">
+                <span class="stat-number">68-74 GB</span>
+                <span class="stat-label">Full Season</span>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="tier-section">
+                <div class="tier-card tier-free">
+                    <span class="tier-badge badge-free">Hobby</span>
+                    <div class="tier-header">
+                        <h2 class="tier-title">Free Tier</h2>
+                        <span class="tier-price">$5-10/month</span>
+                    </div>
+
+                    <div class="server-visual">
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">Primary</div>
+                        </div>
+                    </div>
+
+                    <div class="specs-grid">
+                        <div class="spec-item">
+                            <div class="spec-label">RAM</div>
+                            <div class="spec-value">1-2 GB</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">vCPU</div>
+                            <div class="spec-value">1 Core</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Storage</div>
+                            <div class="spec-value">20 GB</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Sessions Cached</div>
+                            <div class="spec-value">3-5</div>
+                        </div>
+                    </div>
+
+                    <div class="capacity-section">
+                        <div class="capacity-title">Capacity</div>
+                        <ul class="capacity-list">
+                            <li>Sequential fetching only (1 session at a time)</li>
+                            <li>50-100 requests per day</li>
+                            <li>Personal projects & development</li>
+                            <li>Basic compression enabled</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="tier-card tier-pro">
+                    <span class="tier-badge badge-pro">Recommended</span>
+                    <div class="tier-header">
+                        <h2 class="tier-title">Semi-Power Users</h2>
+                        <span class="tier-price">$50-80/month</span>
+                    </div>
+
+                    <div class="server-visual">
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">App Server</div>
+                        </div>
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">Redis Cache</div>
+                        </div>
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">Database</div>
+                        </div>
+                    </div>
+
+                    <div class="specs-grid">
+                        <div class="spec-item">
+                            <div class="spec-label">RAM</div>
+                            <div class="spec-value">4-8 GB</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">vCPU</div>
+                            <div class="spec-value">2-4 Cores</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Storage</div>
+                            <div class="spec-value">100-200 GB</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Sessions Cached</div>
+                            <div class="spec-value">10-15</div>
+                        </div>
+                    </div>
+
+                    <div class="capacity-section">
+                        <div class="capacity-title">Capacity</div>
+                        <ul class="capacity-list">
+                            <li>10-20 concurrent users</li>
+                            <li>5,000-10,000 requests per day</li>
+                            <li>Redis intelligent LRU caching</li>
+                            <li>Background pre-fetch for popular sessions</li>
+                            <li>CloudFlare CDN integration</li>
+                            <li>Last 3 race weekends in hot cache</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="tier-card tier-enterprise">
+                    <span class="tier-badge badge-enterprise">Scale</span>
+                    <div class="tier-header">
+                        <h2 class="tier-title">Enterprise</h2>
+                        <span class="tier-price">$200-500/month</span>
+                    </div>
+
+                    <div class="server-visual">
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">Load Balancer</div>
+                        </div>
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">App Server 1</div>
+                        </div>
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">App Server 2</div>
+                        </div>
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">Redis Cluster</div>
+                        </div>
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">Database</div>
+                        </div>
+                        <div>
+                            <div class="server"></div>
+                            <div class="server-label">CDN Edge</div>
+                        </div>
+                    </div>
+
+                    <div class="specs-grid">
+                        <div class="spec-item">
+                            <div class="spec-label">RAM</div>
+                            <div class="spec-value">16-32 GB</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">vCPU</div>
+                            <div class="spec-value">8+ Cores</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Storage</div>
+                            <div class="spec-value">500+ GB</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Sessions Cached</div>
+                            <div class="spec-value">All 24</div>
+                        </div>
+                    </div>
+
+                    <div class="capacity-section">
+                        <div class="capacity-title">Capacity</div>
+                        <ul class="capacity-list">
+                            <li>100-500 concurrent users</li>
+                            <li>100,000-1,000,000+ requests per day</li>
+                            <li>Full season in-memory cache (all 24 sessions)</li>
+                            <li>Multi-region CDN edge caching</li>
+                            <li>Auto-scaling based on load</li>
+                            <li>Real-time WebSocket streaming</li>
+                            <li>99.9% uptime SLA</li>
+                            <li>Advanced analytics & monitoring</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recommendation">
+                <h3>💡 Recommended Strategy</h3>
+                <p>Start with <strong>Semi-Power Users tier ($50-80/month)</strong> with intelligent caching for last 3
+                    race weekends. Scale to Enterprise as user base grows. CloudFlare free tier provides excellent CDN
+                    at no extra cost.</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>Key Optimizations:</strong> Gzip compression (10x reduction) • Intelligent LRU caching • CDN edge
+                distribution • Background pre-fetching</p>
+            <p style="margin-top: 10px; font-size: 11px; opacity: 0.7;">Infrastructure estimates based on 130.79 MB per
+                session × 24 sessions per race weekend</p>
+        </div>
+    </div>
+</body>
+
+</html>
